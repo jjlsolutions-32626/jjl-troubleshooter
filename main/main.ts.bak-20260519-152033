@@ -1,0 +1,118 @@
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } from "electron";
+import path from "node:path";
+import { registerIpcHandlers } from "./ipc-handlers.js";
+import { initLicenseCheck } from "../config/license.js";
+import { initAutoUpdater } from "./auto-updater.js";
+
+// Squirrel installer integration (Windows)
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const squirrelStartup = (() => {
+  try {
+    return require("electron-squirrel-startup");
+  } catch {
+    return false;
+  }
+})();
+if (squirrelStartup) app.quit();
+
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+
+const isDev = !app.isPackaged;
+
+function getAssetPath(relative: string): string {
+  if (isDev) return path.join(__dirname, "..", "..", "assets", relative);
+  return path.join(process.resourcesPath, "assets", relative);
+}
+
+function createMainWindow(): void {
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+  mainWindow = new BrowserWindow({
+    width: 720,
+    height: 560,
+    show: false,
+    resizable: true,
+    title: "JJL Troubleshooter",
+    icon: getAssetPath("jjl-logo.png"),
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
+
+  const indexHtml = path.join(__dirname, "..", "renderer", "index.html");
+  mainWindow.loadFile(indexHtml).catch((err) => {
+    console.error("Failed to load renderer:", err);
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+  });
+
+  // Hide rather than close so the app keeps living in the tray
+  mainWindow.on("close", (event) => {
+    if (!(app as any).isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+}
+
+function createTray(): void {
+  const trayIconPath = getAssetPath("tray-icon.png");
+  const icon = nativeImage.createFromPath(trayIconPath);
+  // On macOS we'd want a template image — fine to skip for v0.1 (Windows-first).
+  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  tray.setToolTip("JJL Troubleshooter");
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Open Troubleshooter",
+      click: () => createMainWindow(),
+    },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => {
+        (app as any).isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+
+  tray.on("click", () => {
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide();
+    } else {
+      createMainWindow();
+    }
+  });
+}
+
+app.whenReady().then(() => {
+  registerIpcHandlers(ipcMain);
+  initLicenseCheck();
+  createTray();
+  initAutoUpdater();
+
+  // Don't auto-show the window on startup — user opens from tray.
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+  });
+});
+
+// On Windows/Linux, do NOT quit when all windows close — we live in the tray.
+// Simply registering the handler is enough; not calling app.quit() keeps the app alive.
+app.on("window-all-closed", () => {
+  // intentionally a no-op
+});
