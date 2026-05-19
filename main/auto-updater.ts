@@ -1,10 +1,5 @@
-import { app } from "electron";
+import { app, dialog } from "electron";
 
-/**
- * Phase-1 stub. electron-updater wiring is real but the feed URL points at a
- * placeholder GitHub repo that doesn't exist yet, so updates fail silently.
- * Replace with a real provider config once releases are published.
- */
 export function initAutoUpdater(): void {
   if (!app.isPackaged) {
     console.log("[auto-updater] dev mode — skipping update check");
@@ -14,16 +9,35 @@ export function initAutoUpdater(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { autoUpdater } = require("electron-updater");
-    autoUpdater.autoDownload = false;
+
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
     autoUpdater.on("error", (err: Error) => {
-      console.log("[auto-updater] error (expected in v0.1 — feed URL is a placeholder):", err.message);
+      console.log("[auto-updater] error:", err.message);
     });
     autoUpdater.on("update-available", (info: { version: string }) => {
-      console.log("[auto-updater] update available:", info.version);
+      console.log("[auto-updater] update available:", info.version, "— downloading in background");
     });
     autoUpdater.on("update-not-available", () => {
       console.log("[auto-updater] no update available");
     });
+    autoUpdater.on("update-downloaded", (info: { version: string }) => {
+      console.log("[auto-updater] update downloaded:", info.version);
+      const choice = dialog.showMessageBoxSync({
+        type: "info",
+        buttons: ["Restart and install", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Update Ready",
+        message: `JJL Troubleshooter ${info.version} is ready to install.`,
+        detail: "Restart now to apply the update, or choose Later and it will install next time the app quits.",
+      });
+      if (choice === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+
     autoUpdater.checkForUpdates().catch(() => {
       // already logged via the error event
     });

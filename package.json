@@ -1,6 +1,6 @@
 {
   "name": "jjl-troubleshooter",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "JJL Computer Solutions self-service troubleshooting agent",
   "author": "JJL Solutions",
   "license": "UNLICENSED",
@@ -15,7 +15,8 @@
     "start": "npm run build && electron .",
     "package:linux": "npm run build && electron-builder --linux AppImage",
     "package:win": "npm run build && electron-builder --win nsis",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "release:win": "npm run build && electron-builder --win nsis --publish=always"
   },
   "dependencies": {
     "axios": "^1.7.7",
